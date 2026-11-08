@@ -151,6 +151,31 @@ simulation/simulator/bin/daedalus
 | `val_pred.jpg` | 验证集预测可视化 |
 | `inference_conf.png` | 推理可视化（带类别与置信度） |
 
+#### 训练曲线：loss 与 mAP
+
+`docs/lesson03/curve_results.png`（第一行为训练集，第二行为验证集；含 box/pose/cls/dfl loss
+与 precision / recall / mAP50 / mAP50-95）：
+
+![训练曲线：loss 与 mAP](docs/lesson03/curve_results.png)
+
+#### 推理可视化（显示类别与置信度）
+
+仿真画面实时推理，框上标注类别与置信度（如 `R2 0.96`、`B3 0.89`）：
+
+![推理可视化（带置信度）](docs/lesson03/inference_conf.png)
+
+#### 验证集预测与混淆矩阵
+
+![验证集预测](docs/lesson03/val_pred.jpg)
+
+![混淆矩阵](docs/lesson03/confusion_matrix.png)
+
+#### PR 曲线
+
+| Box PR | Pose PR |
+|--------|---------|
+| ![box PR](docs/lesson03/curve_box_pr.png) | ![pose PR](docs/lesson03/curve_pose_pr.png) |
+
 复现训练：
 
 ```bash
@@ -162,6 +187,12 @@ yolo pose train model=yolo11n-pose.pt data=armor_subset.yaml epochs=30 imgsz=640
 > 模型（`docs/lesson03/sim/`），因此仿真里能稳定检出。
 >
 > 仿真模型指标：Box mAP50 = 0.995，Pose mAP50 = 0.995（验证集 204 张）。
+
+仿真域模型的训练曲线与验证预测（`docs/lesson03/sim/`）：
+
+![仿真模型训练曲线：loss 与 mAP](docs/lesson03/sim/curve_results.png)
+
+![仿真模型验证集预测](docs/lesson03/sim/val_pred.jpg)
 
 ### D. 识别效果优化（v1 → v2）
 
