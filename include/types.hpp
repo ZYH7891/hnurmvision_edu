@@ -38,6 +38,17 @@ struct Armor {
 struct Target {
   Eigen::Vector3d position = Eigen::Vector3d::Zero();  // m，IMU稳定系中相对云台原点的目标向量
   Eigen::Vector3d velocity = Eigen::Vector3d::Zero();  // m/s，同一坐标系
+
+  // —— 250ms 匀速预测（任务 2）——
+  bool has_prediction = false;                          // 是否已产生有效预测框
+  std::array<cv::Point2f, 4> predicted_corners{};       // 预测框在图像上的四角（另一颜色绘制）
+  double prediction_error = 0.0;                        // 最近一次「预测 vs 250ms后真实观测」误差（m）
+  bool has_prediction_error = false;
+
+  // —— 静止靶 PnP 位姿 vs 参考真值（任务 1）——
+  double distance = 0.0;                                // 当前 PnP 距离（m）
+  double distance_reference = 0.0;                      // 静止参考真值距离（m），0=未标定
+  bool calibrated = false;
 };
 
 // 第五讲输出：绝对角使用 rad，IO 边界统一转换单位和方向。

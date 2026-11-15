@@ -3,9 +3,11 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
+#include <optional>
 #include <vector>
 
 namespace {
@@ -61,6 +63,8 @@ int main(int argc, char** argv) {
   const bool print_stats = std::getenv("PRINT_STATS") != nullptr;
   const bool print_dist = std::getenv("PRINT_DIST") != nullptr;
   const bool demo_window = std::getenv("DEMO_WINDOW") != nullptr;
+  // AIM_OFF=1：跳过第五讲瞄准输出（第四讲只演示跟踪/预测，避免与外部云台控制争抢）
+  const bool aim_enabled = std::getenv("AIM_OFF") == nullptr;
   StageTimer timer;
   int frame = 0;
   int win_loops = 0, win_inputs = 0;
@@ -74,16 +78,18 @@ int main(int argc, char** argv) {
 
     training::Command command{};
     std::vector<training::Armor> armors;
+    std::optional<training::Target> target;
     if (input) {
       armors = training::lesson03_detection(input->image);
       const auto t2 = Clock::now();
 
-      const auto target = training::lesson04_tracking(
+      target = training::lesson04_tracking(
           armors, input->timestamp, input->imu_q, calibration, tracking);
       const auto t3 = Clock::now();
 
       if (target) {
-        command = training::lesson05_aiming(*target, input->timestamp, input->bullet_speed);
+        if (aim_enabled)
+          command = training::lesson05_aiming(*target, input->timestamp, input->bullet_speed);
         if (print_dist) {
           static int dbg = 0;
           if (++dbg % 20 == 0)
@@ -106,14 +112,58 @@ int main(int argc, char** argv) {
     if (input && devices.config.display) {
       cv::Mat canvas = input->image.clone();  // 画框不污染算法输入
       draw_armors(canvas, armors);
-      cv::imshow("RoboMaster training", canvas);
-      if (demo_window) {
-        static int ui_frames = 0;
-        if (++ui_frames < 60) {
-          cv::moveWindow("RoboMaster training", 0, 0);
-          cv::resizeWindow("RoboMaster training", 1280, 960);
-          cv::setWindowProperty("RoboMaster training", cv::WND_PROP_TOPMOST, 1);
+      const bool fullscreen = demo_window;  // DEMO_WINDOW 同时开启全屏显示，便于录制
+
+      // 250ms 预测框：黄色，区别于检测框（大板橙 / 小板绿）
+      if (target && target->has_prediction) {
+        std::vector<cv::Point> pp;
+        pp.reserve(4);
+        for (const auto& c : target->predicted_corners) pp.emplace_back(cv::Point2i(c));
+        cv::polylines(canvas, pp, /*isClosed=*/true, cv::Scalar(0, 255, 255), 2);
+        cv::Point2f pc(0, 0);
+        for (const auto& p : pp) pc += cv::Point2f(p);
+        pc *= 0.25f;
+        cv::circle(canvas, pc, 4, cv::Scalar(0, 255, 255), cv::FILLED);
+      }
+
+      // 左下角：PnP 距离 / PnP 参考误差 / 250ms 预测误差
+      if (target) {
+        char buf[128];
+        int y = canvas.rows - 70;
+        std::snprintf(buf, sizeof(buf), "PnP dist = %.3f m", target->distance);
+        cv::putText(canvas, buf, cv::Point(10, y), cv::FONT_HERSHEY_SIMPLEX, 0.55,
+                    cv::Scalar(0, 255, 0), 2);
+        y += 22;
+        if (target->calibrated) {
+          std::snprintf(buf, sizeof(buf), "PnP err(ref) = %.3f m",
+                        std::abs(target->distance - target->distance_reference));
+        } else {
+          std::snprintf(buf, sizeof(buf), "PnP ref: calibrating...");
         }
+        cv::putText(canvas, buf, cv::Point(10, y), cv::FONT_HERSHEY_SIMPLEX, 0.55,
+                    cv::Scalar(0, 255, 0), 2);
+        y += 22;
+        if (target->has_prediction_error) {
+          std::snprintf(buf, sizeof(buf), "predict err @250ms = %.3f m",
+                        target->prediction_error);
+        } else {
+          std::snprintf(buf, sizeof(buf), "predict err @250ms = --");
+        }
+        cv::putText(canvas, buf, cv::Point(10, y), cv::FONT_HERSHEY_SIMPLEX, 0.55,
+                    cv::Scalar(0, 255, 255), 2);
+      }
+
+      if (fullscreen) {
+        // 拉伸到屏幕原尺寸后全屏显示：录制时画面 100% 是培训窗口，无其他窗口入镜
+        cv::Mat big;
+        cv::resize(canvas, big, cv::Size(2560, 1600), 0, 0, cv::INTER_LINEAR);
+        cv::imshow("RoboMaster training", big);
+        // 必须在 imshow 之后设置（首次 imshow 才创建 GTK 窗口）
+        static int ui_frames = 0;
+        if (++ui_frames < 60)
+          cv::setWindowProperty("RoboMaster training", cv::WND_PROP_FULLSCREEN, 1);
+      } else {
+        cv::imshow("RoboMaster training", canvas);
       }
       const int key = cv::waitKey(1);
       if (key == 27 || key == 'q') break;
